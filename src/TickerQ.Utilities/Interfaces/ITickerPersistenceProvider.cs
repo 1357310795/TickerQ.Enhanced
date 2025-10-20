@@ -35,11 +35,12 @@ namespace TickerQ.Utilities.Interfaces
         #region Cron Ticker Operations
 
         Task<TCronTicker> GetCronTickerById(Guid id, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
+        Task<TCronTicker> GetCronTickerByOccurrenceId(Guid id, CancellationToken cancellationToken = default);
         Task<TCronTicker[]> GetCronTickersByIds(Guid[] ids, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task<TCronTicker[]> GetNextCronTickers(string[] expressions, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task<TCronTicker[]> GetAllExistingInitializedCronTickers(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task<TCronTicker[]> GetAllCronTickers(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
-        Task<Tuple<Guid, string>[]> GetAllCronTickerExpressions(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
+        Task<Tuple<Guid, string>[]> GetAllValidCronTickerExpressions(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task InsertCronTickers(IEnumerable<TCronTicker> tickers, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task UpdateCronTickers(IEnumerable<TCronTicker> tickers, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);
         Task RemoveCronTickers(IEnumerable<TCronTicker> tickers, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default);

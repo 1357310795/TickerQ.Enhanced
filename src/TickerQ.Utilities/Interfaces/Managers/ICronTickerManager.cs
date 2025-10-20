@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using TickerQ.Utilities.Models;
@@ -11,5 +12,9 @@ namespace TickerQ.Utilities.Interfaces.Managers
         Task<TickerResult<TCronTicker>> AddAsync(TCronTicker entity, CancellationToken cancellationToken = default);
         Task<TickerResult<TCronTicker>> UpdateAsync(Guid id, Action<TCronTicker> updateAction, CancellationToken cancellationToken = default);
         Task<TickerResult<TCronTicker>> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<TickerResult<TCronTicker>> GetAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<TickerResult<TCronTicker>> PauseAsync(Guid id, CancellationToken cancellationToken = default);
+        Task<TickerResult<TCronTicker>> ResumeAsync(Guid id, CancellationToken cancellationToken = default);
+        Task TriggerAsync(Guid id, Dictionary<string, string> additionalDataMap = default,  CancellationToken cancellationToken = default);
     }
 }

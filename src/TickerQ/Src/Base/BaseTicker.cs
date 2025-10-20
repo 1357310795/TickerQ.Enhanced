@@ -26,15 +26,17 @@ namespace TickerQ.Base
         private readonly RestartThrottleManager _restartThrottle;
         protected abstract Task OnTimerTick(InternalFunctionContext[] functions,
             CancellationToken cancellationToken = default, bool dueDone = false);
+        protected ITickerQNotificationHubSender NotificationHubSender { get; set; }
 
         protected BaseTicker(TickerOptionsBuilder tickerOptionsBuilder,
-            IServiceProvider serviceProvider, ILogger<TickerHost> logger, ITickerClock clock)
+            IServiceProvider serviceProvider, ILogger<TickerHost> logger, ITickerClock clock, ITickerQNotificationHubSender notificationHubSender)
         {
             TickerOptionsBuilder =
                 tickerOptionsBuilder ?? throw new ArgumentNullException(nameof(tickerOptionsBuilder));
             ServiceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _restartThrottle = new RestartThrottleManager(SoftNotifyDelayChange);
+            NotificationHubSender = notificationHubSender;
         }
 
         private void Run()
@@ -246,6 +248,11 @@ namespace TickerQ.Base
             TickerOptionsBuilder.NotifyHostStatusFunc((CtsTickerChecker?.IsDisposed == false));
         }
 
+        public void RestartThrottled()
+        {
+            _restartThrottle.RequestRestart();
+        }
+
         public void Start()
         {
             Stop();
@@ -263,5 +270,7 @@ namespace TickerQ.Base
             CtsTickerDelayAwaiter?.Dispose();
             CtsTickerDelayAwaiter = SafeCancellationTokenSource.CreateLinked(CtsTickerChecker.Token);
         }
+
+        public abstract Task ExecuteTaskAsync(InternalFunctionContext context, TickerFunctionDelegate delegateFunction, bool isDue, CancellationToken cancellationToken = default);
     }
 }

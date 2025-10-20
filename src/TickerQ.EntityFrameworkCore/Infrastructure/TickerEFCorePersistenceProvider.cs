@@ -434,7 +434,7 @@ namespace TickerQ.EntityFrameworkCore.Infrastructure
             return cronTickers.Select(x => x.ToCronTicker<TCronTicker>()).ToArray();
         }
 
-        public async Task<Tuple<Guid, string>[]> GetAllCronTickerExpressions(
+        public async Task<Tuple<Guid, string>[]> GetAllValidCronTickerExpressions(
             Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
             var optionsValue = options.InvokeProviderOptions();

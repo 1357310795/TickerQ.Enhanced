@@ -1,9 +1,11 @@
 using System;
 using System.Threading.Tasks;
+using TickerQ.Utilities.Enums;
+using TickerQ.Utilities.Models;
 
 namespace TickerQ.Utilities.Interfaces
 {
-    internal interface ITickerQNotificationHubSender
+    public interface ITickerQNotificationHubSender
     {
         Task AddCronTickerNotifyAsync(object cronTicker);
         Task UpdateCronTickerNotifyAsync(object cronTicker);
@@ -18,5 +20,7 @@ namespace TickerQ.Utilities.Interfaces
         Task AddCronOccurrenceAsync(Guid groupId, object occurrence);
         Task UpdateCronOccurrenceAsync(Guid groupId, object occurrence);
         Task CanceledTickerNotifyAsync(Guid id);
+        Task OnTickerExecutingAsync(InternalFunctionContext context);
+        Task OnTickerExecutedAsync(InternalFunctionContext context);
     }
 }

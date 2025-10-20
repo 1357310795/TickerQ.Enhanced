@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using TickerQ.Utilities.Enums;
 
@@ -7,7 +8,7 @@ namespace TickerQ.Utilities.Models
     public class TickerFunctionContext<TRequest> : TickerFunctionContext
     {
         public TickerFunctionContext(TickerFunctionContext tickerFunctionContext, TRequest request) : 
-            base(tickerFunctionContext.Id, tickerFunctionContext.Type, tickerFunctionContext.RetryCount, tickerFunctionContext.IsDue, tickerFunctionContext.DeleteAsync, tickerFunctionContext.CancelTicker)
+            base(tickerFunctionContext.Id, tickerFunctionContext.Type, tickerFunctionContext.RetryCount, tickerFunctionContext.IsDue, tickerFunctionContext.DeleteAsync, tickerFunctionContext.CancelTicker, tickerFunctionContext.DataMap)
         {
             Request = request;
         }
@@ -17,7 +18,7 @@ namespace TickerQ.Utilities.Models
 
     public class TickerFunctionContext
     {
-        internal TickerFunctionContext(Guid id, TickerType type, int retryCount, bool isDue, Func<Task> deleteAsync, Action cancelTicker)
+        internal TickerFunctionContext(Guid id, TickerType type, int retryCount, bool isDue, Func<Task> deleteAsync, Action cancelTicker, Dictionary<string, string> dataMap)
         {
             Id = id;
             Type = type;
@@ -25,6 +26,7 @@ namespace TickerQ.Utilities.Models
             IsDue = isDue;
             DeleteAsync = deleteAsync;
             CancelTicker = cancelTicker;
+            DataMap = dataMap;
         }
         public Guid Id { get; }
         public TickerType Type { get; }
@@ -35,5 +37,7 @@ namespace TickerQ.Utilities.Models
         /// </summary>
         public Func<Task> DeleteAsync { get; }
         public Action CancelTicker { get; }
+        public Dictionary<string, string> DataMap { get; }
+        public object Result { get; set; }
     }
 }

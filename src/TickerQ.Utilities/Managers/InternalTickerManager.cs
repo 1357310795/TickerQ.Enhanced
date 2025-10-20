@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TickerQ.Utilities.DashboardDtos;
 using TickerQ.Utilities.Enums;
+using TickerQ.Utilities.Extensions;
 using TickerQ.Utilities.Interfaces;
 using TickerQ.Utilities.Interfaces.Managers;
 using TickerQ.Utilities.Models;
@@ -136,9 +137,11 @@ namespace TickerQ.Utilities.Managers
             {
                 FunctionName = ticker.Function,
                 TickerId = ticker.Id,
+                OccurrenceId = ticker.Id,
                 Type = TickerType.Timer,
                 Retries = ticker.Retries,
-                RetryIntervals = ticker.RetryIntervals
+                RetryIntervals = ticker.RetryIntervals,
+                DataMap = ticker.DataMap.Clone()
             }).ToArray();
 
             // Send notifications if we have tickers
@@ -215,10 +218,12 @@ namespace TickerQ.Utilities.Managers
                     result.Add(new InternalFunctionContext
                     {
                         FunctionName = cronTicker.Function,
-                        TickerId = occurrence.Id,
+                        TickerId = cronTicker.Id,
+                        OccurrenceId = occurrence.Id,
                         Type = TickerType.CronExpression,
                         Retries = cronTicker.Retries,
-                        RetryIntervals = cronTicker.RetryIntervals
+                        RetryIntervals = cronTicker.RetryIntervals,
+                        DataMap = cronTicker.DataMap.Clone()
                     });
 
                     // Send notifications if we have a notification hub
@@ -248,7 +253,8 @@ namespace TickerQ.Utilities.Managers
                         ExecutionTime = nextOccurrence,
                         LockedAt = now,
                         LockHolder = LockHolder,
-                        CronTickerId = cronTickerId
+                        CronTickerId = cronTickerId,
+                        CronTicker = cronTicker,
                     };
 
                     newOccurrences.Add(newOccurrence);
@@ -278,10 +284,12 @@ namespace TickerQ.Utilities.Managers
                         result.Add(new InternalFunctionContext
                         {
                             FunctionName = cronTicker.Function,
-                            TickerId = insertedTicker,
+                            TickerId = cronTicker.Id,
+                            OccurrenceId = insertedTicker,
                             Type = TickerType.CronExpression,
                             Retries = cronTicker.Retries,
-                            RetryIntervals = cronTicker.RetryIntervals
+                            RetryIntervals = cronTicker.RetryIntervals,
+                            DataMap = cronTicker.DataMap.Clone()
                         });
 
                         // Send notification for new occurrence
@@ -310,7 +318,7 @@ namespace TickerQ.Utilities.Managers
             var now = Clock.UtcNow;
 
             var cronTickers = await PersistenceProvider
-                .GetAllCronTickerExpressions(cancellationToken: cancellationToken)
+                .GetAllValidCronTickerExpressions(cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             var cronTickerIds = cronTickers.Select(x => x.Item1).ToArray();
@@ -323,7 +331,7 @@ namespace TickerQ.Utilities.Managers
             var withNext = cronTickers
                 .Select(vt =>
                 {
-                    var schedule = CrontabSchedule.TryParse(vt.Item2);
+                    var schedule = CrontabSchedule.TryParse(vt.Item2, new CrontabSchedule.ParseOptions() { IncludingSeconds = true });
                     if (schedule == null) return null;
 
                     // Find the earliest occurrence for this cron ticker
@@ -532,7 +540,7 @@ namespace TickerQ.Utilities.Managers
                     }
                     else
                     {
-                        var cronOccurrenceIds = resourceType.Select(x => x.TickerId).ToArray();
+                        var cronOccurrenceIds = resourceType.Select(x => x.OccurrenceId).ToArray();
 
                         var cronTickerOccurrences = await PersistenceProvider
                             .GetCronTickerOccurrencesByIds(cronOccurrenceIds, opt => opt.SetAsTracking(),
@@ -680,10 +688,12 @@ namespace TickerQ.Utilities.Managers
                     yield return new InternalFunctionContext()
                     {
                         FunctionName = cronTickerOccurrence.CronTicker.Function,
-                        TickerId = cronTickerOccurrence.Id,
+                        TickerId = cronTickerOccurrence.CronTickerId,
+                        OccurrenceId = cronTickerOccurrence.Id,
                         Type = TickerType.CronExpression,
                         Retries = cronTickerOccurrence.CronTicker.Retries,
-                        RetryIntervals = cronTickerOccurrence.CronTicker.RetryIntervals
+                        RetryIntervals = cronTickerOccurrence.CronTicker.RetryIntervals,
+                        DataMap = cronTickerOccurrence.CronTicker.DataMap.Clone()
                     };
                 }
             }
@@ -718,9 +728,11 @@ namespace TickerQ.Utilities.Managers
                     {
                         FunctionName = timeTicker.Function,
                         TickerId = timeTicker.Id,
+                        OccurrenceId = timeTicker.Id,
                         Type = TickerType.Timer,
                         Retries = timeTicker.Retries,
-                        RetryIntervals = timeTicker.RetryIntervals
+                        RetryIntervals = timeTicker.RetryIntervals,
+                        DataMap = timeTicker.DataMap.Clone()
                     };
                 }
             }

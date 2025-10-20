@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using TickerQ.Utilities.Enums;
 using TickerQ.Utilities.Interfaces;
+using TickerQ.Utilities.Models;
 
 namespace TickerQ.Utilities.Temps
 {
@@ -63,6 +65,16 @@ namespace TickerQ.Utilities.Temps
         }
 
         public Task CanceledTickerNotifyAsync(Guid id)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task OnTickerExecutingAsync(InternalFunctionContext context)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task OnTickerExecutedAsync(InternalFunctionContext context)
         {
             return Task.CompletedTask;
         }

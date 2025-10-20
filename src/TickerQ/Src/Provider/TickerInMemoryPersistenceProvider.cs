@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using TickerQ.Utilities;
 using TickerQ.Utilities.Enums;
 using TickerQ.Utilities.Interfaces;
@@ -26,6 +27,13 @@ namespace TickerQ.Src.Provider
         private static readonly ConcurrentDictionary<Guid, CronTickerOccurrence<TCronTicker>> CronOccurrences =
             new ConcurrentDictionary<Guid, CronTickerOccurrence<TCronTicker>>(
                 new Dictionary<Guid, CronTickerOccurrence<TCronTicker>>());
+
+        private readonly ITickerClock _clock;
+
+        public TickerInMemoryPersistenceProvider(ITickerClock clock)
+        {
+            _clock = clock;
+        }
 
         #region Time Ticker Operations
 
@@ -54,8 +62,17 @@ namespace TickerQ.Src.Provider
                      (x.LockHolder == lockHolder && x.Status == TickerStatus.Queued)) &&
                     x.ExecutionTime >= roundedMinDate &&
                     x.ExecutionTime < roundedMinDate.AddSeconds(1))
+                .Where(x => !x.IsPaused)
                 .ToArray();
 
+            var lockTime = _clock.UtcNow;
+            foreach (var ticker in result)
+            {
+                ticker.Status = TickerStatus.Queued;
+                ticker.LockHolder = lockHolder;
+                ticker.LockedAt = lockTime;
+            }
+            
             return Task.FromResult(result);
         }
 
@@ -76,6 +93,7 @@ namespace TickerQ.Src.Provider
                 .Where(x =>
                     (x.Status == TickerStatus.Idle && x.ExecutionTime.AddSeconds(1) < now) ||
                     (x.Status == TickerStatus.Queued && x.ExecutionTime.AddSeconds(3) < now))
+                .Where(x => !x.IsPaused)
                 .ToArray();
 
             return Task.FromResult(result);
@@ -120,6 +138,7 @@ namespace TickerQ.Src.Provider
             var result = TimeTickers.Values
                 .Where(x => tickerStatuses.Contains(x.Status)
                             && x.ExecutionTime > now)
+                .Where(x => !x.IsPaused)
                 .OrderBy(x => x.ExecutionTime)
                 .Select(x => x.ExecutionTime)
                 .FirstOrDefault();
@@ -167,6 +186,14 @@ namespace TickerQ.Src.Provider
             return Task.FromResult(result);
         }
 
+        public Task<TCronTicker> GetCronTickerByOccurrenceId(Guid id, CancellationToken cancellationToken = default)
+        {
+            var result1 = CronOccurrences.GetValueOrDefault(id);
+            var result2 = CronTickers.GetValueOrDefault(result1.CronTickerId);
+
+            return Task.FromResult(result2);
+        }
+
         public Task<TCronTicker[]> GetCronTickersByIds(Guid[] ids, Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
             var result = CronTickers.Values
@@ -181,6 +208,7 @@ namespace TickerQ.Src.Provider
         {
             var result = CronTickers.Values
                 .Where(x => expressions.Contains(x.Expression))
+                .Where(x => !x.IsPaused)
                 .ToArray();
 
             return Task.FromResult(result);
@@ -203,9 +231,10 @@ namespace TickerQ.Src.Provider
             return Task.FromResult(cronTickers);
         }
 
-        public Task<Tuple<Guid, string>[]> GetAllCronTickerExpressions(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
+        public Task<Tuple<Guid, string>[]> GetAllValidCronTickerExpressions(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
             var result = CronTickers.Values
+                .Where(x => !x.IsPaused)
                 .Select(x => Tuple.Create(x.Id, x.Expression))
                 .Distinct()
                 .ToArray();
@@ -481,7 +510,13 @@ namespace TickerQ.Src.Provider
             Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
             foreach (var o in cronTickerOccurrences)
+            {
+                if (!CronOccurrences.ContainsKey(o.Id))
+                {
+                    Console.WriteLine("WARNING!!!");
+                }
                 CronOccurrences[o.Id] = o;
+            }
 
             return Task.CompletedTask;
         }

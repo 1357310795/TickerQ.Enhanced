@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using TickerQ.Utilities.Enums;
 
 namespace TickerQ.Utilities.Models.Ticker

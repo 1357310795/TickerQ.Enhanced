@@ -19,15 +19,19 @@ namespace TickerQ
     {
         private readonly TickerTaskScheduler _tickerTaskScheduler;
         private readonly SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1, 1);
+        private readonly ITickerPersistenceProvider<TickerQ.Utilities.Models.Ticker.TimeTicker, TickerQ.Utilities.Models.Ticker.CronTicker> _persistenceProvider;
 
         public TickerHost(
             IServiceProvider serviceProvider,
             TickerOptionsBuilder tickerOptionsBuilder,
             ILogger<TickerHost> logger,
-            ITickerClock clock)
-            : base(tickerOptionsBuilder, serviceProvider, logger, clock)
+            ITickerClock clock,
+            ITickerQNotificationHubSender notiHub,
+            ITickerPersistenceProvider<Utilities.Models.Ticker.TimeTicker, Utilities.Models.Ticker.CronTicker> persistenceProvider)
+            : base(tickerOptionsBuilder, serviceProvider, logger, clock, notiHub)
         {
             _tickerTaskScheduler = new TickerTaskScheduler(tickerOptionsBuilder.MaxConcurrency);
+            _persistenceProvider = persistenceProvider;
         }
 
         protected override async Task OnTimerTick(
@@ -43,7 +47,17 @@ namespace TickerQ
 
                 if (tickerItem.Priority == TickerTaskPriority.LongRunning)
                     _ = Task.Factory.StartNew(
-                        async () => await ExecuteTaskAsync(context, tickerItem.Delegate, dueDone, cancellationToken),
+                        async () =>
+                        {
+                            try
+                            {
+                                await ExecuteTaskAsync(context, tickerItem.Delegate, dueDone, cancellationToken);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Long running ticker task failed: {ex}");
+                            }
+                        },
                         TaskCreationOptions.LongRunning);
                 else
                 {
@@ -59,7 +73,8 @@ namespace TickerQ
             _semaphoreSlim.Release();
         }
 
-        private async Task ExecuteTaskAsync(InternalFunctionContext context,
+        public override async Task ExecuteTaskAsync(
+            InternalFunctionContext context,
             TickerFunctionDelegate delegateFunction,
             bool isDue,
             CancellationToken cancellationToken = default)
@@ -70,7 +85,10 @@ namespace TickerQ
                 : new CancellationTokenSource();
 
             TickerCancellationTokenManager.AddTickerCancellationToken(cancellationTokenSource, context.FunctionName,
-                context.TickerId, context.Type, isDue);
+                context.OccurrenceId, context.Type, isDue);
+            var datamap = context.DataMap;
+
+            await NotificationHubSender.OnTickerExecutingAsync(context);
 
             Exception lastException = null;
             var success = false;
@@ -84,20 +102,22 @@ namespace TickerQ
                 try
                 {
                     if (await WaitForRetry(context, cancellationToken, attempt, cancellationTokenSource)) break;
-
-                    stopWatch.Start();
-
-                    await delegateFunction(cancellationTokenSource.Token, scopedProvider,
-                        new TickerFunctionContext(
+                    var realContext = new TickerFunctionContext(
                             context.TickerId,
                             context.Type,
                             attempt,
                             isDue,
                             () => DeleteTicker(context, internalTickerManager!, cancellationTokenSource.Token),
-                            null));
+                            null,
+                            datamap);
+
+                    stopWatch.Start();
+
+                    await delegateFunction(cancellationTokenSource.Token, scopedProvider, realContext);
 
                     success = true;
                     context.RetryCount = attempt;
+                    context.Result = realContext.Result;
                     break;
                 }
                 catch (TaskCanceledException ex)
@@ -149,9 +169,10 @@ namespace TickerQ
                 var manager = handlerScope.ServiceProvider.GetRequiredService<IInternalTickerManager>();
                 await manager.SetTickerStatus(context, cancellationToken);
             }
+            await NotificationHubSender.OnTickerExecutedAsync(context);
 
             cancellationTokenSource.Dispose();
-            TickerCancellationTokenManager.RemoveTickerCancellationToken(context.TickerId);
+            TickerCancellationTokenManager.RemoveTickerCancellationToken(context.OccurrenceId);
         }
 
         private async Task<bool> WaitForRetry(InternalFunctionContext context, CancellationToken cancellationToken, int attempt,
