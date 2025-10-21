@@ -206,12 +206,13 @@ namespace TickerQ.Src.Provider
         public Task<TCronTicker[]> GetNextCronTickers(string[] expressions,
             Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
-            var result = CronTickers.Values
-                .Where(x => expressions.Contains(x.Expression))
-                .Where(x => !x.IsPaused)
-                .ToArray();
+            throw new NotImplementedException();
+            //var result = CronTickers.Values
+            //    .Where(x => expressions.Contains(x.Expression))
+            //    .Where(x => !x.IsPaused)
+            //    .ToArray();
 
-            return Task.FromResult(result);
+            //return Task.FromResult(result);
         }
 
         public Task<TCronTicker[]> GetAllExistingInitializedCronTickers(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
@@ -231,11 +232,10 @@ namespace TickerQ.Src.Provider
             return Task.FromResult(cronTickers);
         }
 
-        public Task<Tuple<Guid, string>[]> GetAllValidCronTickerExpressions(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
+        public Task<TCronTicker[]> GetAllValidCronTickers(Action<TickerProviderOptions> options = null, CancellationToken cancellationToken = default)
         {
             var result = CronTickers.Values
                 .Where(x => !x.IsPaused)
-                .Select(x => Tuple.Create(x.Id, x.Expression))
                 .Distinct()
                 .ToArray();
 

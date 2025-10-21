@@ -7,6 +7,8 @@
         <PackageTags>ticker;queue;cron;time;scheduler;fire-and-forget</PackageTags>
         <PackageIcon>icon.jpg</PackageIcon>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<PackageVersion>1.0.10-local</PackageVersion>
+		<PackageOutputPath>C:\Users\teru\source\repos\nuget</PackageOutputPath>
     </PropertyGroup>
 
     <ItemGroup>

@@ -72,7 +72,7 @@ namespace TickerQ.Utilities.Managers
                 : (minTimeRemaining, nextTickers);
         }
 
-        private TimeSpan CalculateMinTimeRemaining(IGrouping<DateTime, (Guid, string)> minCronTicker,
+        private TimeSpan CalculateMinTimeRemaining(IGrouping<DateTime, Guid> minCronTicker,
             DateTime minTimeTicker)
         {
             var now = Clock.UtcNow;
@@ -88,7 +88,7 @@ namespace TickerQ.Utilities.Managers
         }
 
         private async Task<InternalFunctionContext[]>RetrieveEligibleTickersAsync(
-            IGrouping<DateTime, (Guid, string)> minCronTicker, DateTime minTimeTicker,
+            IGrouping<DateTime, Guid> minCronTicker, DateTime minTimeTicker,
             CancellationToken cancellationToken = default)
         {
             var hasValidCronTicker = minCronTicker != null;
@@ -178,27 +178,23 @@ namespace TickerQ.Utilities.Managers
             return lockedAndQueuedTimeTickers;
         }
 
-        private async Task<InternalFunctionContext[]> RetrieveNextCronTickersAsync((Guid, string)[] vt,
-            DateTime nextOccurrence,
-            CancellationToken cancellationToken = default)
+        private async Task<InternalFunctionContext[]> RetrieveNextCronTickersAsync(Guid[] cronTickerIds, DateTime nextOccurrence, CancellationToken cancellationToken = default)
         {
             var now = Clock.UtcNow;
 
-            var cronTickerIdSet = vt.Select(x => x.Item1).ToArray();
-
             var cronTickers = await PersistenceProvider
-                .GetCronTickersByIds(cronTickerIdSet, cancellationToken: cancellationToken)
+                .GetCronTickersByIds(cronTickerIds, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             // GetNextCronTickerOccurrences now handles locking internally, so we don't need to set tracking
             var occurrenceList = await PersistenceProvider
-                .GetNextCronTickerOccurrences(nextOccurrence, LockHolder, cronTickerIdSet, opt => opt.SetAsNoTracking(),
+                .GetNextCronTickerOccurrences(nextOccurrence, LockHolder, cronTickerIds, opt => opt.SetAsNoTracking(),
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             
             // Get existing occurrences for duplicate checking (Issue #195 fix)
             var existingOccurrences = await PersistenceProvider
-                .GetExistingCronTickerOccurrences(cronTickerIdSet, opt => opt.SetAsNoTracking(),
+                .GetExistingCronTickerOccurrences(cronTickerIds, opt => opt.SetAsNoTracking(),
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             
@@ -235,15 +231,15 @@ namespace TickerQ.Utilities.Managers
             }
 
             // Check if we need to create new occurrences for cron tickers that don't have any
-            foreach (var (cronTickerId, _) in vt)
+            foreach (var cronTickerId in cronTickerIds)
             {
                 var cronTicker = cronTickers.FirstOrDefault(x => x.Id == cronTickerId);
                 if (cronTicker == null) continue;
 
                 // Check if we already have an occurrence for this cron ticker (Issue #195 fix)
-                var hasExistingOccurrence = existingOccurrences.Any(x => x.CronTickerId == cronTickerId && x.ExecutionTime == nextOccurrence);
+                var existingOccurrence = existingOccurrences.FirstOrDefault(x => x.CronTickerId == cronTickerId && x.ExecutionTime == nextOccurrence);
 
-                if (!hasExistingOccurrence)
+                if (existingOccurrence == null)
                 {
                     // Create a new occurrence for the next execution time
                     var newOccurrence = new CronTickerOccurrence<TCronTicker>
@@ -312,16 +308,16 @@ namespace TickerQ.Utilities.Managers
                 .ConfigureAwait(false);
         }
 
-        private async Task<IGrouping<DateTime, (Guid, string)>> GetEarliestCronTickerGroupAsync(
+        private async Task<IGrouping<DateTime, Guid>> GetEarliestCronTickerGroupAsync(
             CancellationToken cancellationToken = default)
         {
             var now = Clock.UtcNow;
 
             var cronTickers = await PersistenceProvider
-                .GetAllValidCronTickerExpressions(cancellationToken: cancellationToken)
+                .GetAllValidCronTickers(cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            var cronTickerIds = cronTickers.Select(x => x.Item1).ToArray();
+            var cronTickerIds = cronTickers.Select(x => x.Id).ToArray();
 
             var cronTickerOccurrences = await PersistenceProvider
                 .GetCronTickerOccurrencesByCronTickerIds(cronTickerIds, cronTickers.Length,
@@ -331,12 +327,29 @@ namespace TickerQ.Utilities.Managers
             var withNext = cronTickers
                 .Select(vt =>
                 {
-                    var schedule = CrontabSchedule.TryParse(vt.Item2, new CrontabSchedule.ParseOptions() { IncludingSeconds = true });
-                    if (schedule == null) return null;
+                    Func<DateTime, DateTime> getNextExecutionTime = (x) => x;
+                    if (vt.Interval.HasValue)
+                    {
+                        TimeSpan span = TimeSpan.FromTicks(vt.Interval.Value);
+                        getNextExecutionTime = (x) => x + span;
+                    }
+                    else
+                    {
+                        var schedule = CrontabSchedule.TryParse(vt.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true });
+                        getNextExecutionTime = (x) => schedule.GetNextOccurrence(x);
+                        if (schedule == null) return null;
+                    }
+                    DateTime getFutureNextExecutionTime(DateTime x)
+                    {
+                        var res = getNextExecutionTime(x);
+                        if (res < DateTime.UtcNow) 
+                            return getNextExecutionTime(DateTime.UtcNow);
+                        return res;
+                    }
 
                     // Find the earliest occurrence for this cron ticker
                     var existingOccurrences = cronTickerOccurrences
-                        .Where(x => x.CronTickerId == vt.Item1)
+                        .Where(x => x.CronTickerId == vt.Id)
                         .OrderBy(x => x.ExecutionTime)
                         .ToList();
 
@@ -350,8 +363,8 @@ namespace TickerQ.Utilities.Managers
                         {
                             return new
                             {
-                                Id = vt.Item1,
-                                Expression = vt.Item2,
+                                Id = vt.Id,
+                                Expression = vt.Expression,
                                 Next = idleOccurrence.ExecutionTime
                             };
                         }
@@ -365,8 +378,8 @@ namespace TickerQ.Utilities.Managers
                         {
                             return new
                             {
-                                Id = vt.Item1,
-                                Expression = vt.Item2,
+                                Id = vt.Id,
+                                Expression = vt.Expression,
                                 Next = queuedOnSameLock.ExecutionTime
                             };
                         }
@@ -383,9 +396,9 @@ namespace TickerQ.Utilities.Managers
                             // Get next occurrence after the latest non-completed one
                             return new
                             {
-                                Id = vt.Item1,
-                                Expression = vt.Item2,
-                                Next = schedule.GetNextOccurrence(latestNonCompletedOccurrence.ExecutionTime)
+                                Id = vt.Id,
+                                Expression = vt.Expression,
+                                Next = getFutureNextExecutionTime(latestNonCompletedOccurrence.ExecutionTime)
                             };
                         }
 
@@ -398,18 +411,18 @@ namespace TickerQ.Utilities.Managers
                         {
                             return new
                             {
-                                Id = vt.Item1,
-                                Expression = vt.Item2,
-                                Next = schedule.GetNextOccurrence(latestCompletedOccurrence.ExecutionTime)
+                                Id = vt.Id,
+                                Expression = vt.Expression,
+                                Next = getFutureNextExecutionTime(latestCompletedOccurrence.ExecutionTime)
                             };
                         }
                     }
 
                     return new
                     {
-                        Id = vt.Item1,
-                        Expression = vt.Item2,
-                        Next = schedule.GetNextOccurrence(now)
+                        Id = vt.Id,
+                        Expression = vt.Expression,
+                        Next = getFutureNextExecutionTime(now)
                     };
                 })
                 .Where(x => x?.Next != null)
@@ -417,7 +430,9 @@ namespace TickerQ.Utilities.Managers
                 .OrderBy(g => g.Key)
                 .FirstOrDefault();
 
-            return withNext?.Select(x => (x.Id, x.Expression)).GroupBy(_ => withNext.Key).FirstOrDefault();
+            return withNext?.Select(x => x.Id)
+                .GroupBy(_ => withNext.Key)
+                .FirstOrDefault();
         }
 
         public Task SetTickersInProgress(

@@ -151,12 +151,20 @@ namespace TickerQ.Utilities.Managers
                     return new TickerResult<TCronTicker>(
                         new TickerValidatorException($"Cannot find TickerFunction with name {entity?.Function}"));
 
-                if (!(CrontabSchedule.TryParse(entity.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
-                    return new TickerResult<TCronTicker>(
-                        new TickerValidatorException($"Cannot parse expression {entity.Expression}"));
+                var nextOccurrence = DateTime.MaxValue;
+                if (entity.Interval.HasValue)
+                {
+                    nextOccurrence = Clock.UtcNow.AddTicks(entity.Interval.Value);
+                }
+                else
+                {
+                    if (!(CrontabSchedule.TryParse(entity.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
+                        return new TickerResult<TCronTicker>(
+                            new TickerValidatorException($"Cannot parse expression {entity.Expression}"));
 
-                var nextOccurrence = crontabSchedule.GetNextOccurrence(Clock.UtcNow);
-
+                    nextOccurrence = crontabSchedule.GetNextOccurrence(Clock.UtcNow);
+                }
+                
                 entity.CreatedAt = Clock.UtcNow;
                 entity.UpdatedAt = Clock.UtcNow;
 
@@ -165,7 +173,7 @@ namespace TickerQ.Utilities.Managers
 
                 var generateNextOccurrence = new CronTickerOccurrence<TCronTicker>
                 {
-                    Status = TickerStatus.Idle,
+                    Status = TickerStatus.Queued,
                     ExecutionTime = nextOccurrence,
                     LockedAt = Clock.UtcNow,
                     LockHolder = LockHolder,
@@ -250,16 +258,27 @@ namespace TickerQ.Utilities.Managers
             try
             {
                 var cronTickerExpression = cronTicker.Expression;
+                var oldInterval = cronTicker.Interval;
                 var function = cronTicker.Function;
 
                 updateAction(cronTicker);
 
-                var coreChanges = (cronTickerExpression != cronTicker.Expression) || function != cronTicker.Function;
+                var coreChanges = (cronTickerExpression != cronTicker.Expression) || (function != cronTicker.Function) || (oldInterval != cronTicker.Interval);
 
-                if (!(CrontabSchedule.TryParse(cronTicker.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
-                    return new TickerResult<TCronTicker>(
-                        new TickerValidatorException($"Cannot parse expression {cronTicker.Expression}"));
+                var nextOccurrence = DateTime.MaxValue;
+                if (cronTicker.Interval.HasValue)
+                {
+                    nextOccurrence = Clock.UtcNow.AddTicks(cronTicker.Interval.Value);
+                }
+                else
+                {
+                    if (!(CrontabSchedule.TryParse(cronTicker.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
+                        return new TickerResult<TCronTicker>(
+                            new TickerValidatorException($"Cannot parse expression {cronTicker.Expression}"));
 
+                    nextOccurrence = crontabSchedule.GetNextOccurrence(Clock.UtcNow);
+                }
+                
                 cronTicker.UpdatedAt = Clock.UtcNow;
 
                 await PersistenceProvider.UpdateCronTickers(new[] { cronTicker }, cancellationToken: cancellationToken)
@@ -286,8 +305,8 @@ namespace TickerQ.Utilities.Managers
                     var generateNextOccurrence = new CronTickerOccurrence<TCronTicker>
                     {
                         CronTickerId = cronTicker.Id,
-                        Status = TickerStatus.Idle,
-                        ExecutionTime = crontabSchedule.GetNextOccurrence(Clock.UtcNow),
+                        Status = TickerStatus.Queued,
+                        ExecutionTime = nextOccurrence,
                         LockedAt = Clock.UtcNow,
                         LockHolder = LockHolder,
                         CronTicker = cronTicker
@@ -481,9 +500,6 @@ namespace TickerQ.Utilities.Managers
 
             try
             {
-                var cronTickerExpression = cronTicker.Expression;
-                var function = cronTicker.Function;
-
                 cronTicker.IsPaused = true;
                 cronTicker.UpdatedAt = Clock.UtcNow;
 
@@ -561,14 +577,25 @@ namespace TickerQ.Utilities.Managers
             try
             {
                 var cronTickerExpression = cronTicker.Expression;
+                var oldInterval = cronTicker.Interval;
                 var function = cronTicker.Function;
 
                 cronTicker.IsPaused = false;
                 cronTicker.UpdatedAt = Clock.UtcNow;
 
-                if (!(CrontabSchedule.TryParse(cronTicker.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
-                    return new TickerResult<TCronTicker>(
-                        new TickerValidatorException($"Cannot parse expression {cronTicker.Expression}"));
+                var nextOccurrence = DateTime.MaxValue;
+                if (cronTicker.Interval.HasValue)
+                {
+                    nextOccurrence = Clock.UtcNow.AddTicks(cronTicker.Interval.Value);
+                }
+                else
+                {
+                    if (!(CrontabSchedule.TryParse(cronTicker.Expression, new CrontabSchedule.ParseOptions() { IncludingSeconds = true }) is { } crontabSchedule))
+                        return new TickerResult<TCronTicker>(
+                            new TickerValidatorException($"Cannot parse expression {cronTicker.Expression}"));
+
+                    nextOccurrence = crontabSchedule.GetNextOccurrence(Clock.UtcNow);
+                }
 
                 await PersistenceProvider.UpdateCronTickers(new[] { cronTicker }, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
@@ -592,8 +619,8 @@ namespace TickerQ.Utilities.Managers
                 var generateNextOccurrence = new CronTickerOccurrence<TCronTicker>
                 {
                     CronTickerId = cronTicker.Id,
-                    Status = TickerStatus.Idle,
-                    ExecutionTime = crontabSchedule.GetNextOccurrence(Clock.UtcNow),
+                    Status = TickerStatus.Queued,
+                    ExecutionTime = nextOccurrence,
                     LockedAt = Clock.UtcNow,
                     LockHolder = LockHolder,
                     CronTicker = cronTicker
